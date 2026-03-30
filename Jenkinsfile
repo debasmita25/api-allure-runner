@@ -48,32 +48,25 @@ pipeline {
                         usernameVariable: 'GITHUB_USERNAME',
                         passwordVariable: 'GITHUB_TOKEN'
                     )]) {
-                        if (isUnix()) {
-                            sh '''
-                            echo "GITHUB_USERNAME=$GITHUB_USERNAME" > .env
-                            echo "GITHUB_TOKEN=$GITHUB_TOKEN" >> .env
-                            echo "TEST_ENV=$TEST_ENV" >> .env
-                            echo "TEST_SUITE=$TEST_SUITE" >> .env
-
-                            docker compose down || true
-                            docker compose up --pull always --abort-on-container-exit
-                            EXIT_CODE=$?
-                            if [ $EXIT_CODE -ne 0 ]; then exit $EXIT_CODE; fi
-                            '''
-                        } else {
-                            bat """
-                            echo GITHUB_USERNAME=%GITHUB_USERNAME% > .env
-                            echo GITHUB_TOKEN=%GITHUB_TOKEN% >> .env
-                            echo TEST_ENV=%TEST_ENV% >> .env
-                            echo TEST_SUITE=%TEST_SUITE% >> .env
-
-                            docker compose down
-                            docker compose up --pull always --abort-on-container-exit
-                            if %ERRORLEVEL% NEQ 0 exit /b %ERRORLEVEL%
-                            """
-                        }
+                        
+                    if (isUnix()) {
+                        sh '''
+                        docker rm -f api-tests-runner || true
+                        docker compose down || true
+                        docker compose up --pull always --abort-on-container-exit
+                        EXIT_CODE=$?
+                        if [ $EXIT_CODE -ne 0 ]; then exit $EXIT_CODE; fi
+                        '''
+                    } else {
+                        bat """
+                        docker rm -f api-tests-runner >nul 2>&1 || exit 0
+                        docker compose down
+                        docker compose up --pull always --abort-on-container-exit
+                        if %ERRORLEVEL% NEQ 0 exit /b %ERRORLEVEL%
+                        """
                     }
-                }
+                    }
+                } 
             }
         }
 
