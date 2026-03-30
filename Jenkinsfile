@@ -103,21 +103,12 @@ TEST_SUITE=$env:TEST_SUITE
             archiveArtifacts artifacts: 'allure-results/**', fingerprint: true
             archiveArtifacts artifacts: 'allure-report.zip', fingerprint: true
          script {
-            timeout(time: 2, unit: 'MINUTES') {
-                waitUntil {
-                    def exists = fileExists('allure-report.zip')
-                    if (!exists) {
-                        echo "Waiting for allure-report.zip to be created..."
-                        sleep 5
-                    }
-                    return exists
-                }
-            }
+            bat 'dir allure-report.zip'
             emailext(
                 subject: "Build #${env.BUILD_NUMBER} - ${currentBuild.currentResult}",
                 to: 'debasmita25@gmail.com',
                 mimeType: 'text/html',
-                attachmentsPattern: '**/allure-report.zip',
+                attachmentsPattern: '*/allure-report.zip',
                 attachLog: true,
                 body: """
                 <h3>Build Summary</h3>
