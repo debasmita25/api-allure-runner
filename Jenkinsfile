@@ -97,6 +97,25 @@ pipeline {
                 }
             }
         }
+
+        stage('Extract Test Summary') {
+            steps {
+                script {
+                    if (isUnix()) {
+                        summary = sh(
+                            script: "docker logs api-tests-runner | grep -A 2 'GitHub API Test Suite'",
+                            returnStdout: true
+                        ).trim()
+                    } else {
+                        summary = bat(
+                            script: 'docker logs api-tests-runner | findstr /C:"GitHub API Test Suite"',
+                            returnStdout: true
+                        ).trim()
+                    }
+                    env.TEST_SUMMARY = summary
+                }
+            }
+        }
     }
 
     post {
@@ -120,16 +139,13 @@ pipeline {
                     </span>
                     </p>
 
-                    <p>
-                    <a href="${env.BUILD_URL}artifact/allure-report.zip">
-                    Download Allure Report
-                    </a>
-                    </p>
+                    <p><a href="${env.BUILD_URL}allure">View Allure Report in Jenkins</a></p>
+                    <p><a href="${env.BUILD_URL}artifact/allure-report.zip">Download Allure Report</a></p>
 
-                    <p style="color: green;">
-                    After download, run:
-                    </p>
+                    <h4>API Test Summary:</h4>
+                    <pre>${env.TEST_SUMMARY}</pre>
 
+                    <p style="color:green;">Navigate to the download directory and execute:</p>
                     <p><b>allure open allure-report</b></p>
                     """
                 )
