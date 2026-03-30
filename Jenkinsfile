@@ -61,7 +61,7 @@ EOF
                             '''
                         } else {
                             powershell '''
-                            @"
+@"
 GITHUB_USERNAME=$env:GITHUB_USERNAME
 GITHUB_TOKEN=$env:GITHUB_TOKEN
 TEST_ENV=$env:TEST_ENV
