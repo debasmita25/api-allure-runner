@@ -134,14 +134,14 @@ TEST_SUITE=$env:TEST_SUITE
                         fi
                         '''
                     } else {
-                        powershell '''
-                        if (Test-Path "allure-results" -and (Get-ChildItem "allure-results").Count -gt 0) {
-                            Write-Host "Allure results present"
-                        } else {
-                            Write-Host "Allure results missing or empty"
-                            exit 1
-                        }
-                        '''
+                         powershell '''
+                            if ((Test-Path "allure-results") -and ((Get-ChildItem "allure-results").Count -gt 0)) {
+                                Write-Host "Allure results found"
+                            } else {
+                                Write-Host "No Allure results found"
+                                exit 1
+                            }
+                            '''
                     }
                 }
             }
