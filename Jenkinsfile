@@ -107,7 +107,7 @@ TEST_SUITE=$env:TEST_SUITE
                 subject: "Build #${env.BUILD_NUMBER} - ${currentBuild.currentResult}",
                 to: 'debasmita25@gmail.com',
                 mimeType: 'text/html',
-                attachmentsPattern: 'allure-report.zip',
+                
                 attachLog: true,
 
                 body: """
