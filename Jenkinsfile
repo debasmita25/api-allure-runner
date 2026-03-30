@@ -98,24 +98,60 @@ pipeline {
             }
         }
 
+        // stage('Extract Test Summary') {
+        //     steps {
+        //         script {
+        //             if (isUnix()) {
+        //                 summary = sh(
+        //                     script: "docker logs api-tests-runner | grep -A 2 'GitHub API Test Suite'",
+        //                     returnStdout: true
+        //                 ).trim()
+        //             } else {
+        //                 summary = bat(
+        //                     script: 'docker logs api-tests-runner | findstr /C:"GitHub API Test Suite"',
+        //                     returnStdout: true
+        //                 ).trim()
+        //             }
+        //             env.TEST_SUMMARY = summary
+        //         }
+        //     }
+        // }
         stage('Extract Test Summary') {
-            steps {
-                script {
-                    if (isUnix()) {
-                        summary = sh(
-                            script: "docker logs api-tests-runner | grep -A 2 'GitHub API Test Suite'",
-                            returnStdout: true
-                        ).trim()
-                    } else {
-                        summary = bat(
-                            script: 'docker logs api-tests-runner | findstr /C:"GitHub API Test Suite"',
-                            returnStdout: true
-                        ).trim()
-                    }
-                    env.TEST_SUMMARY = summary
+        steps {
+            script {
+                // declare local variable to avoid memory leak warning
+                def summary = ""
+
+                if (isUnix()) {
+                    // Unix/Linux: extract header + 2 lines after
+                    summary = sh(
+                        script: "docker logs api-tests-runner 2>/dev/null | grep -A 2 'GitHub API Test Suite' || true",
+                        returnStdout: true
+                    ).trim()
+                } else {
+                    // Windows: PowerShell extract header + 2 lines after
+                    summary = powershell(
+                        script: '''
+                        try {
+                            $logs = docker logs api-tests-runner 2>$null
+                            $lines = $logs -split "`n"
+                            $idx = $lines.IndexOf($lines | Where-Object { $_ -match "GitHub API Test Suite" })
+                            if ($idx -ge 0) {
+                                $lines[$idx..($idx+2)] -join "`n"
+                            } else { "" }
+                        } catch { "" }
+                        ''',
+                        returnStdout: true
+                    ).trim()
                 }
+
+                // assign to env variable to use later in email
+                env.TEST_SUMMARY = summary
+
+                echo "✅ Extracted API Test Summary:\n${env.TEST_SUMMARY}"
             }
         }
+    }
     }
 
     post {
