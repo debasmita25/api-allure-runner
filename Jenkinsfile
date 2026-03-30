@@ -36,13 +36,14 @@ pipeline {
                 script {
                     if (isUnix()) {
                         sh '''
-                        rm -rf allure-results allure-report || true
+                        rm -rf allure-results allure-report allure-report.zip || true
                         mkdir -p allure-results allure-report
                         '''
                     } else {
                         bat '''
                         IF EXIST allure-results rmdir /s /q allure-results
                         IF EXIST allure-report rmdir /s /q allure-report
+                        IF EXIST allure-report.zip del /f /q allure-report.zip
                         mkdir allure-results
                         mkdir allure-report
                         '''
@@ -62,32 +63,40 @@ pipeline {
 
                         if (isUnix()) {
 
-                            sh """
+                            sh '''
                             set -e
-                            export GITHUB_USERNAME=$GITHUB_USERNAME
-                            export GITHUB_TOKEN=$GITHUB_TOKEN
-                            export TEST_ENV=${params.TEST_ENV}
-                            export TEST_SUITE=${params.TEST_SUITE}
+
+                            cat <<EOF > .env
+GITHUB_USERNAME=$GITHUB_USERNAME
+GITHUB_TOKEN=$GITHUB_TOKEN
+TEST_ENV=$TEST_ENV
+TEST_SUITE=$TEST_SUITE
+EOF
 
                             docker compose down || true
                             docker compose up --abort-on-container-exit
-                            """
+                            '''
 
                         } else {
 
-                           powershell '''
-                                $ErrorActionPreference = "Stop"
+                            powershell '''
+                            $ErrorActionPreference = "Stop"
 
-                                @"
-                            GITHUB_USERNAME=$env:GITHUB_USERNAME
-                            GITHUB_TOKEN=$env:GITHUB_TOKEN
-                            TEST_ENV=$env:TEST_ENV
-                            TEST_SUITE=$env:TEST_SUITE
-                            "@ | Out-File -Encoding ASCII .env
+                            @"
+GITHUB_USERNAME=$env:GITHUB_USERNAME
+GITHUB_TOKEN=$env:GITHUB_TOKEN
+TEST_ENV=$env:TEST_ENV
+TEST_SUITE=$env:TEST_SUITE
+"@ | Out-File -Encoding ASCII .env
 
+                            try {
                                 docker compose down
-                                docker compose up --abort-on-container-exit
-                                '''
+                            } catch {
+                                Write-Host "Ignore cleanup error"
+                            }
+
+                            docker compose up --abort-on-container-exit
+                            '''
                         }
                     }
                 }
@@ -117,11 +126,8 @@ pipeline {
                 script {
                     if (isUnix()) {
                         sh '''
-                        echo "Checking allure-results directory..."
-
                         if [ -d "allure-results" ] && [ "$(ls -A allure-results)" ]; then
                             echo "Allure results present"
-                            ls -la allure-results
                         else
                             echo "Allure results missing or empty"
                             exit 1
@@ -129,11 +135,8 @@ pipeline {
                         '''
                     } else {
                         powershell '''
-                        Write-Host "Checking allure-results directory..."
-
                         if (Test-Path "allure-results" -and (Get-ChildItem "allure-results").Count -gt 0) {
                             Write-Host "Allure results present"
-                            Get-ChildItem "allure-results"
                         } else {
                             Write-Host "Allure results missing or empty"
                             exit 1
@@ -144,22 +147,15 @@ pipeline {
             }
         }
 
-        stage('Verify Allure') {
-            steps {
-                script {
-                    def allureHome = tool 'Allure'
-                    sh "${allureHome}/bin/allure --version"
-                }
-            }
-        }
-
         stage('Generate Allure HTML (CLI)') {
             steps {
                 script {
+                    def allureHome = tool 'Allure'
+
                     if (isUnix()) {
-                        sh 'allure generate allure-results --clean -o allure-report'
+                        sh "${allureHome}/bin/allure generate allure-results --clean -o allure-report"
                     } else {
-                        powershell 'allure generate allure-results --clean -o allure-report'
+                        powershell "& '${allureHome}\\bin\\allure.bat' generate allure-results --clean -o allure-report"
                     }
                 }
             }
@@ -176,29 +172,37 @@ pipeline {
                 }
             }
         }
+    }
 
     post {
         always {
             archiveArtifacts artifacts: 'allure-results/**', fingerprint: true
+            archiveArtifacts artifacts: 'allure-report.zip', fingerprint: true
+
             emailext(
-            subject: "Build ${env.BUILD_NUMBER} - ${currentBuild.currentResult}",
-            body: """
+                subject: "Build ${env.BUILD_NUMBER} - ${currentBuild.currentResult}",
+                mimeType: 'text/html',
+                to: 'debasmita25@gmail.com',
+
+                body: """
                 <h2>Jenkins Build Report</h2>
 
                 <p><b>Job:</b> ${env.JOB_NAME}</p>
                 <p><b>Build:</b> ${env.BUILD_NUMBER}</p>
                 <p><b>Status:</b> ${currentBuild.currentResult}</p>
 
-                <p><b>Allure Report:</b></p>
-                <p><a href="${env.BUILD_URL}allure">Click here to view report</a></p>
+                <p><b>Allure Report:</b><br/>
+                <a href="${env.BUILD_URL}allure">View Report</a></p>
+
+                <p><b>Attachment:</b> Allure HTML Report (ZIP)</p>
 
                 <br/>
                 <p>Regards,<br/>Jenkins</p>
-            """,
-            mimeType: 'text/html',
-            to: 'debasmita25@gmail.com',
+                """,
 
-            attachmentsPattern: 'allure-report.zip' )
+                attachmentsPattern: 'allure-report.zip',
+                attachLog: true
+            )
         }
 
         success {
