@@ -144,14 +144,38 @@ pipeline {
             }
         }
 
-        stage('Allure Report') {
+        stage('Verify Allure') {
             steps {
-                allure([
-                    results: [[path: 'allure-results']]
-                ])
+                script {
+                    def allureHome = tool 'Allure'
+                    sh "${allureHome}/bin/allure --version"
+                }
             }
         }
-    }
+
+        stage('Generate Allure HTML (CLI)') {
+            steps {
+                script {
+                    if (isUnix()) {
+                        sh 'allure generate allure-results --clean -o allure-report'
+                    } else {
+                        powershell 'allure generate allure-results --clean -o allure-report'
+                    }
+                }
+            }
+        }
+
+        stage('Zip Allure Report') {
+            steps {
+                script {
+                    if (isUnix()) {
+                        sh 'zip -r allure-report.zip allure-report'
+                    } else {
+                        powershell 'Compress-Archive -Path allure-report\\* -DestinationPath allure-report.zip'
+                    }
+                }
+            }
+        }
 
     post {
         always {
@@ -174,7 +198,7 @@ pipeline {
             mimeType: 'text/html',
             to: 'debasmita25@gmail.com',
 
-            attachmentsPattern: 'allure-results/**' )
+            attachmentsPattern: 'allure-report.zip' )
         }
 
         success {
