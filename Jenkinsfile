@@ -174,34 +174,48 @@ TEST_SUITE=$env:TEST_SUITE
         }
     }
 
+        stage('Validate Report Zip') {
+        steps {
+            script {
+                if (isUnix()) {
+                    sh 'ls -l allure-report.zip || exit 1'
+                } else {
+                    powershell 'if (!(Test-Path "allure-report.zip")) { exit 1 }'
+                }
+            }
+        }
+    }
+
     post {
         always {
             archiveArtifacts artifacts: 'allure-results/**', fingerprint: true
             archiveArtifacts artifacts: 'allure-report.zip', fingerprint: true
 
-            emailext(
-                subject: "Build ${env.BUILD_NUMBER} - ${currentBuild.currentResult}",
-                body: """
-                    <h2>Jenkins Build Report</h2>
+          emailext(
+            subject: "Build ${env.BUILD_NUMBER} - ${currentBuild.currentResult}",
+            body: """
+                <h2>Jenkins Build Report</h2>
 
-                    <p><b>Job:</b> ${env.JOB_NAME}</p>
-                    <p><b>Build:</b> ${env.BUILD_NUMBER}</p>
-                    <p><b>Status:</b> ${currentBuild.currentResult}</p>
+                <p><b>Job:</b> ${env.JOB_NAME}</p>
+                <p><b>Build:</b> ${env.BUILD_NUMBER}</p>
+                <p><b>Status:</b> ${currentBuild.currentResult}</p>
 
-                    <p><b>Allure Report:</b></p>
-                    <p><a href="${env.BUILD_URL}allure">Click here to view report</a></p>
+                <p><b>Allure Report:</b></p>
+                <p><a href="${env.BUILD_URL}allure">Click here to view report</a></p>
 
-                    <br/>
-                    <p><b>Attached:</b> Allure HTML Report (ZIP)</p>
+                <br/>
+                <p><b>Attached:</b> Allure HTML Report (ZIP)</p>
+                <p><b>Run command to view:</b> allure open allure-report </p>
 
-                    <br/>
-                    <p>Regards,<br/>Jenkins</p>
-                """,
-                mimeType: 'text/html',
-                to: 'debasmita25@gmail.com',
-
-                attachmentsPattern: 'allure-report.zip'
-            )
+                <br/>
+                <p>Regards,<br/>Jenkins</p>
+            """,
+            mimeType: 'text/html',
+            to: 'debasmita25@gmail.com',
+            attachmentsPattern: 'allure-report.zip',
+            compressLog: true,
+            attachLog: true   // ✅ useful for debugging
+        )
         }
 
         success {
