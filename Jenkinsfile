@@ -108,7 +108,7 @@ TEST_SUITE=$env:TEST_SUITE
                 subject: "Build #${env.BUILD_NUMBER} - ${currentBuild.currentResult}",
                 to: 'debasmita25@gmail.com',
                 mimeType: 'text/html',
-                attachmentsPattern: '*/allure-report.zip',
+                attachmentsPattern: '${env.WORKSPACE}/allure-report.zip',
                 attachLog: true,
                 body: """
                 <h3>Build Summary</h3>
@@ -116,6 +116,8 @@ TEST_SUITE=$env:TEST_SUITE
                 <p><b>Status:</b> ${currentBuild.currentResult}</p>
 
                 <p><a href="${env.BUILD_URL}allure">View Allure Report in Jenkins</a></p>
+
+                <p><a href="${env.BUILD_URL}artifact/allure-report.zip">Download Allure Report</a></p>
 
                 <p>Allure HTML report attached.</p>
                 <p>Navigate to the download directory and execute the following command to view the report: </p>
