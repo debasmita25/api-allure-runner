@@ -181,27 +181,26 @@ TEST_SUITE=$env:TEST_SUITE
 
             emailext(
                 subject: "Build ${env.BUILD_NUMBER} - ${currentBuild.currentResult}",
+                body: """
+                    <h2>Jenkins Build Report</h2>
+
+                    <p><b>Job:</b> ${env.JOB_NAME}</p>
+                    <p><b>Build:</b> ${env.BUILD_NUMBER}</p>
+                    <p><b>Status:</b> ${currentBuild.currentResult}</p>
+
+                    <p><b>Allure Report:</b></p>
+                    <p><a href="${env.BUILD_URL}allure">Click here to view report</a></p>
+
+                    <br/>
+                    <p><b>Attached:</b> Allure HTML Report (ZIP)</p>
+
+                    <br/>
+                    <p>Regards,<br/>Jenkins</p>
+                """,
                 mimeType: 'text/html',
                 to: 'debasmita25@gmail.com',
 
-                body: """
-                <h2>Jenkins Build Report</h2>
-
-                <p><b>Job:</b> ${env.JOB_NAME}</p>
-                <p><b>Build:</b> ${env.BUILD_NUMBER}</p>
-                <p><b>Status:</b> ${currentBuild.currentResult}</p>
-
-                <p><b>Allure Report:</b><br/>
-                <a href="${env.BUILD_URL}allure">View Report</a></p>
-
-                <p><b>Attachment:</b> Allure HTML Report (ZIP)</p>
-
-                <br/>
-                <p>Regards,<br/>Jenkins</p>
-                """,
-
-                attachmentsPattern: 'allure-report.zip',
-                attachLog: true
+                attachmentsPattern: 'allure-report.zip'
             )
         }
 
