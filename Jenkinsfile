@@ -46,18 +46,26 @@ GITHUB_TOKEN=${GITHUB_TOKEN}
 TEST_ENV=${TEST_ENV}
 TEST_SUITE=${TEST_SUITE}"""
 
-                        isUnix()
-                            ? sh('''
+                        if(isUnix()) {
+                            sh '''
                                 docker pull ''' + env.TEST_IMAGE + '''
                                 docker compose down || true
                                 docker compose up --abort-on-container-exit
-                              ''')
-                            : powershell("""
+                              '''
+                        } else {
+                            powershell   """
                                 docker pull $env:TEST_IMAGE
                                 docker compose down
-                                docker compose up --abort-on-container-exit
-                                if (\$LASTEXITCODE -ne 0) { exit \$LASTEXITCODE }
-                              """)
+                                docker compose up --abort-on-container-exit 2>&1 | Tee-Object -FilePath docker-output.txt
+                                        if (\$LASTEXITCODE -ne 0) { exit \$LASTEXITCODE }
+                                    """
+                                }
+
+                                // Extract the test summary line
+                                def dockerOutput = readFile('docker-output.txt')
+                                def summaryLine = dockerOutput.readLines().find { it.contains('Total tests run:') }
+                                env.TEST_SUMMARY = summaryLine ? summaryLine.trim() : 'Test summary not found'
+                                
                     }
                 }
             }
@@ -95,6 +103,9 @@ TEST_SUITE=${TEST_SUITE}"""
                         <span style="color: ${currentBuild.currentResult == 'SUCCESS' ? 'green' : 'red'};">
                             ${currentBuild.currentResult}
                         </span>
+                    </p>
+                    <p><b>Test Results:</b>
+                        <span style="color: green;">${env.TEST_SUMMARY}</span>
                     </p>
                     <p><a href="${env.BUILD_URL}allure">View Allure Report in Jenkins</a></p>
                     <p><a href="${env.BUILD_URL}artifact/allure-report.zip">Download Allure Report</a></p>
