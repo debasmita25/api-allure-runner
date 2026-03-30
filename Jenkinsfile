@@ -11,7 +11,16 @@ pipeline {
     TEST_IMAGE='debasmita25/github-api-tests:latest'
    }
 
+
+
    stages {
+
+    stage('Checkout Code') {
+            steps {
+                checkout scm
+            }
+    } 
+
 
     stage('pull Test Image '){
 
