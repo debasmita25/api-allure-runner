@@ -51,22 +51,22 @@ pipeline {
                         if (isUnix()) {
                             sh '''
                             cat <<EOF > .env
-GITHUB_USERNAME=$GITHUB_USERNAME
-GITHUB_TOKEN=$GITHUB_TOKEN
-TEST_ENV=$TEST_ENV
-TEST_SUITE=$TEST_SUITE
-EOF
+                            GITHUB_USERNAME=$GITHUB_USERNAME
+                            GITHUB_TOKEN=$GITHUB_TOKEN
+                            TEST_ENV=$TEST_ENV
+                            TEST_SUITE=$TEST_SUITE
+                            EOF
                             docker compose down || true
                             docker compose up --abort-on-container-exit
                             '''
                         } else {
                             powershell '''
                             @"
-GITHUB_USERNAME=$env:GITHUB_USERNAME
-GITHUB_TOKEN=$env:GITHUB_TOKEN
-TEST_ENV=$env:TEST_ENV
-TEST_SUITE=$env:TEST_SUITE
-"@ | Out-File -Encoding ASCII .env
+                            GITHUB_USERNAME=$env:GITHUB_USERNAME
+                            GITHUB_TOKEN=$env:GITHUB_TOKEN
+                            TEST_ENV=$env:TEST_ENV
+                            TEST_SUITE=$env:TEST_SUITE
+                            "@ | Out-File -Encoding ASCII .env
 
                             docker compose down
                             docker compose up --abort-on-container-exit
@@ -102,14 +102,14 @@ TEST_SUITE=$env:TEST_SUITE
         always {
             archiveArtifacts artifacts: 'allure-results/**', fingerprint: true
             archiveArtifacts artifacts: 'allure-report.zip', fingerprint: true
-
+         script {
+           
             emailext(
                 subject: "Build #${env.BUILD_NUMBER} - ${currentBuild.currentResult}",
                 to: 'debasmita25@gmail.com',
                 mimeType: 'text/html',
-                
+                attachmentsPattern: '**/allure-report.zip',
                 attachLog: true,
-
                 body: """
                 <h3>Build Summary</h3>
                 <p><b>Job:</b> ${env.JOB_NAME}</p>
@@ -118,8 +118,11 @@ TEST_SUITE=$env:TEST_SUITE
                 <p><a href="${env.BUILD_URL}allure">View Allure Report in Jenkins</a></p>
 
                 <p>Allure HTML report attached.</p>
+                <p>Navigate to the download directory and execute the following command to view the report: </p>
+                <p><b> allure open allure-report </b> </p>
                 """
             )
+        }
         }
 
         success {
