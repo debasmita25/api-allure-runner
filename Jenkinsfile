@@ -19,13 +19,16 @@ pipeline {
         stage('Setup Workspace') {
             steps {
                 script {
-                    isUnix()
-                        ? sh('rm -rf allure-results allure-report allure-report.zip; mkdir -p allure-results')
-                        : bat('''
-                            for %d in (allure-results allure-report) do if exist %d rmdir /s /q %d
-                            if exist allure-report.zip del /f /q allure-report.zip
-                            mkdir allure-results
-                          ''')
+                    if (isUnix()) {
+                sh 'rm -rf allure-results allure-report allure-report.zip; mkdir -p allure-results'
+            } else {
+                bat '''
+                    IF EXIST allure-results rmdir /s /q allure-results
+                    IF EXIST allure-report rmdir /s /q allure-report
+                    IF EXIST allure-report.zip del /f /q allure-report.zip
+                    mkdir allure-results
+                '''
+            }
                 }
             }
         }
