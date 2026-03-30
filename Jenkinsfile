@@ -75,22 +75,19 @@ pipeline {
 
                         } else {
 
-                            powershell """
-                            \$ErrorActionPreference = "Stop"
+                           powershell '''
+                                $ErrorActionPreference = "Stop"
 
-                            \$env:GITHUB_USERNAME = "${GITHUB_USERNAME}"
-                            \$env:GITHUB_TOKEN    = "${GITHUB_TOKEN}"
-                            \$env:TEST_ENV        = "${params.TEST_ENV}"
-                            \$env:TEST_SUITE      = "${params.TEST_SUITE}"
+                                @"
+                            GITHUB_USERNAME=$env:GITHUB_USERNAME
+                            GITHUB_TOKEN=$env:GITHUB_TOKEN
+                            TEST_ENV=$env:TEST_ENV
+                            TEST_SUITE=$env:TEST_SUITE
+                            "@ | Out-File -Encoding ASCII .env
 
-                            try {
                                 docker compose down
-                            } catch {
-                                Write-Host "Ignoring cleanup error"
-                            }
-
-                            docker compose up --abort-on-container-exit
-                            """
+                                docker compose up --abort-on-container-exit
+                                '''
                         }
                     }
                 }
