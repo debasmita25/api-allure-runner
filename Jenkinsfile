@@ -177,7 +177,7 @@ pipeline {
             mimeType: 'text/html',
             to: 'debasmita25@gmail.com',
 
-            attachmentsPattern: 'allure-results/**'
+            attachmentsPattern: 'allure-results/**' )
         }
 
         success {
