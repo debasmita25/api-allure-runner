@@ -1,4 +1,5 @@
 pipeline {
+
     agent any
 
     parameters {
@@ -23,15 +24,15 @@ pipeline {
                 script {
                     if (isUnix()) {
                         sh '''
-                        rm -rf allure-results allure-report allure-report.zip || true
-                        mkdir -p allure-results
+                            rm -rf allure-results allure-report allure-report.zip || true
+                            mkdir -p allure-results
                         '''
                     } else {
                         bat '''
-                        IF EXIST allure-results rmdir /s /q allure-results
-                        IF EXIST allure-report rmdir /s /q allure-report
-                        IF EXIST allure-report.zip del /f /q allure-report.zip
-                        mkdir allure-results
+                            IF EXIST allure-results rmdir /s /q allure-results
+                            IF EXIST allure-report rmdir /s /q allure-report
+                            IF EXIST allure-report.zip del /f /q allure-report.zip
+                            mkdir allure-results
                         '''
                     }
                 }
@@ -46,18 +47,17 @@ pipeline {
                         usernameVariable: 'GITHUB_USERNAME',
                         passwordVariable: 'GITHUB_TOKEN'
                     )]) {
-
                         if (isUnix()) {
-                            sh """
-                            cat <<EOF > .env
+                            sh '''
+                                cat <<EOF > .env
 GITHUB_USERNAME=$GITHUB_USERNAME
 GITHUB_TOKEN=$GITHUB_TOKEN
 TEST_ENV=$TEST_ENV
 TEST_SUITE=$TEST_SUITE
 EOF
-                            docker compose down || true
-                            docker compose up --pull always --abort-on-container-exit
-                            """
+                                docker compose down || true
+                                docker compose up --pull always --abort-on-container-exit
+                            '''
                         } else {
                             powershell '''
 @"
@@ -67,7 +67,10 @@ TEST_ENV=$env:TEST_ENV
 TEST_SUITE=$env:TEST_SUITE
 "@ | Out-File -Encoding ASCII .env
 
-docker compose down || true
+# Stop and remove existing containers safely
+docker compose down -v -t 10 2>$null
+
+# Run docker compose with always pull latest image
 docker compose up --pull always --abort-on-container-exit
 '''
                         }
@@ -80,17 +83,16 @@ docker compose up --pull always --abort-on-container-exit
             steps {
                 script {
                     def allureHome = tool 'Allure'
-
                     if (isUnix()) {
                         sh """
-                        ${allureHome}/bin/allure generate allure-results --clean -o allure-report
-                        zip -r allure-report.zip allure-report
+                            ${allureHome}/bin/allure generate allure-results --clean -o allure-report
+                            zip -r allure-report.zip allure-report
                         """
                     } else {
                         powershell """
-                        & '${allureHome}\\bin\\allure.bat' generate allure-results --clean -o allure-report
-                        Compress-Archive -Path allure-report\\* -DestinationPath allure-report.zip
-                        """
+& '${allureHome}\\bin\\allure.bat' generate allure-results --clean -o allure-report
+Compress-Archive -Path allure-report\\* -DestinationPath allure-report.zip
+"""
                     }
                 }
             }
@@ -100,73 +102,54 @@ docker compose up --pull always --abort-on-container-exit
             steps {
                 script {
                     def summary = ""
-
                     if (isUnix()) {
-                        summary = sh(
-                            script: "docker logs api-tests-runner 2>/dev/null | grep -A 2 'GitHub API Test Suite' || true",
-                            returnStdout: true
-                        ).trim()
+                        summary = sh(script: "docker logs api-tests-runner | grep 'GitHub API Test Suite' -A 3", returnStdout: true).trim()
                     } else {
-                        summary = powershell(
-                            script: '''
-try {
-    $logs = docker logs api-tests-runner 2>$null
-    $lines = $logs -split "`n"
-    $idx = ($lines | Select-String "GitHub API Test Suite").LineNumber - 1
-    if ($idx -ge 0) {
-        $lines[$idx..($idx+2)] -join "`n"
-    } else { "" }
-} catch { "" }
-''',
-                            returnStdout: true
-                        ).trim()
+                        summary = powershell(script: "docker logs api-tests-runner | Select-String 'GitHub API Test Suite' -Context 0,3", returnStdout: true).trim()
                     }
-
-                    env.TEST_SUMMARY = summary
-                    echo "✅ Extracted API Test Summary:\n${env.TEST_SUMMARY}"
+                    env.API_TEST_SUMMARY = summary
                 }
             }
         }
 
-    }
+    } // stages
 
     post {
         always {
             archiveArtifacts artifacts: 'allure-results/**', fingerprint: true
             archiveArtifacts artifacts: 'allure-report.zip', fingerprint: true
+
             script {
+                def emailBody = """
+                    <h3>Build Summary</h3>
+                    <p><b>Job:</b> ${env.JOB_NAME}</p>
+                    <p><b>Status:</b> 
+                        <span style="color: ${currentBuild.currentResult == 'SUCCESS' ? 'green' : 'red'};">
+                        ${currentBuild.currentResult}
+                        </span>
+                    </p>
+
+                    <h4>API Test Summary:</h4>
+                    <pre>${env.API_TEST_SUMMARY}</pre>
+
+                    <p><a href="${env.BUILD_URL}allure">View Allure Report in Jenkins</a></p>
+                    <p><a href="${env.BUILD_URL}artifact/allure-report.zip">Download Allure Report</a></p>
+
+                    <p><span style="color:green;">Navigate to the download directory and execute:</span></p>
+                    <p><b>allure open allure-report</b></p>
+                """
+
                 emailext(
                     subject: "Build #${env.BUILD_NUMBER} - ${currentBuild.currentResult}",
                     to: 'debasmita25@gmail.com',
                     mimeType: 'text/html',
-                    body: """
-                    <h3>Build Summary</h3>
-                    <p><b>Job:</b> ${env.JOB_NAME}</p>
-                    <p><b>Status:</b> 
-                    <span style="color: ${currentBuild.currentResult == 'SUCCESS' ? 'green' : 'red'};">
-                    ${currentBuild.currentResult}
-                    </span>
-                    </p>
-
-                    <h3>API Test Summary:</h3>
-                    <pre>${env.TEST_SUMMARY}</pre>
-
-                    <p><a href="${env.BUILD_URL}allure">View Allure Report in Jenkins</a></p>
-                    <p><a href="${env.WORKSPACE}/allure-report.zip">Download Allure Report</a></p>
-
-                    <p><span style="color: green;">Navigate to the download directory and execute the following command to view the report:</span> </p>
-                    <p><b> allure open allure-report </b> </p>
-                    """
+                    body: emailBody,
+                    attachmentsPattern: "${env.WORKSPACE}/allure-report.zip"
                 )
             }
         }
 
-        success {
-            echo "✅ Pipeline Passed"
-        }
-
-        failure {
-            echo "❌ Pipeline Failed"
-        }
+        success { echo "✅ Pipeline Passed" }
+        failure { echo "❌ Pipeline Failed" }
     }
 }
