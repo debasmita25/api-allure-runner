@@ -114,6 +114,16 @@ Compress-Archive -Path allure-report\\* -DestinationPath allure-report.zip
 
     } // stages
 
+        stage('Publish Allure Report') {
+        steps {
+            allure([
+                includeProperties: false,
+                jdk: '',
+                results: [[path: 'allure-results']]
+            ])
+        }
+    }
+
     post {
         always {
             archiveArtifacts artifacts: 'allure-results/**', fingerprint: true
