@@ -1,5 +1,4 @@
 pipeline {
-
     agent any
 
     parameters {
@@ -8,7 +7,6 @@ pipeline {
     }
 
     environment {
-        // Optional, can be used in Docker run if needed
         TEST_IMAGE = 'debasmita25/github-api-tests:latest'
     }
 
@@ -48,25 +46,33 @@ pipeline {
                         usernameVariable: 'GITHUB_USERNAME',
                         passwordVariable: 'GITHUB_TOKEN'
                     )]) {
-                        
-                    if (isUnix()) {
-                        sh '''
-                        docker rm -f api-tests-runner || true
-                        docker compose down || true
-                        docker compose up --pull always --abort-on-container-exit
-                        EXIT_CODE=$?
-                        if [ $EXIT_CODE -ne 0 ]; then exit $EXIT_CODE; fi
-                        '''
-                    } else {
-                        bat """
-                        docker rm -f api-tests-runner >nul 2>&1 || exit 0
-                        docker compose down
-                        docker compose up --pull always --abort-on-container-exit
-                        if %ERRORLEVEL% NEQ 0 exit /b %ERRORLEVEL%
-                        """
+
+                        if (isUnix()) {
+                            sh """
+                            cat <<EOF > .env
+GITHUB_USERNAME=$GITHUB_USERNAME
+GITHUB_TOKEN=$GITHUB_TOKEN
+TEST_ENV=$TEST_ENV
+TEST_SUITE=$TEST_SUITE
+EOF
+                            docker compose down || true
+                            docker compose up --pull always --abort-on-container-exit
+                            """
+                        } else {
+                            powershell '''
+@"
+GITHUB_USERNAME=$env:GITHUB_USERNAME
+GITHUB_TOKEN=$env:GITHUB_TOKEN
+TEST_ENV=$env:TEST_ENV
+TEST_SUITE=$env:TEST_SUITE
+"@ | Out-File -Encoding ASCII .env
+
+docker compose down || true
+docker compose up --pull always --abort-on-container-exit
+'''
+                        }
                     }
-                    }
-                } 
+                }
             }
         }
 
@@ -77,19 +83,11 @@ pipeline {
 
                     if (isUnix()) {
                         sh """
-                        if [ ! -d "allure-results" ]; then
-                            echo "No allure-results folder found!"
-                            exit 1
-                        fi
                         ${allureHome}/bin/allure generate allure-results --clean -o allure-report
                         zip -r allure-report.zip allure-report
                         """
                     } else {
                         powershell """
-                        if (!(Test-Path "allure-results")) {
-                            Write-Host "No allure-results folder found!"
-                            exit 1
-                        }
                         & '${allureHome}\\bin\\allure.bat' generate allure-results --clean -o allure-report
                         Compress-Archive -Path allure-report\\* -DestinationPath allure-report.zip
                         """
@@ -98,97 +96,77 @@ pipeline {
             }
         }
 
-        // stage('Extract Test Summary') {
-        //     steps {
-        //         script {
-        //             if (isUnix()) {
-        //                 summary = sh(
-        //                     script: "docker logs api-tests-runner | grep -A 2 'GitHub API Test Suite'",
-        //                     returnStdout: true
-        //                 ).trim()
-        //             } else {
-        //                 summary = bat(
-        //                     script: 'docker logs api-tests-runner | findstr /C:"GitHub API Test Suite"',
-        //                     returnStdout: true
-        //                 ).trim()
-        //             }
-        //             env.TEST_SUMMARY = summary
-        //         }
-        //     }
-        // }
         stage('Extract Test Summary') {
-        steps {
-            script {
-                // declare local variable to avoid memory leak warning
-                def summary = ""
+            steps {
+                script {
+                    def summary = ""
 
-                if (isUnix()) {
-                    // Unix/Linux: extract header + 2 lines after
-                    summary = sh(
-                        script: "docker logs api-tests-runner 2>/dev/null | grep -A 2 'GitHub API Test Suite' || true",
-                        returnStdout: true
-                    ).trim()
-                } else {
-                    // Windows: PowerShell extract header + 2 lines after
-                    summary = powershell(
-                        script: '''
-                        try {
-                            $logs = docker logs api-tests-runner 2>$null
-                            $lines = $logs -split "`n"
-                            $idx = $lines.IndexOf($lines | Where-Object { $_ -match "GitHub API Test Suite" })
-                            if ($idx -ge 0) {
-                                $lines[$idx..($idx+2)] -join "`n"
-                            } else { "" }
-                        } catch { "" }
-                        ''',
-                        returnStdout: true
-                    ).trim()
+                    if (isUnix()) {
+                        summary = sh(
+                            script: "docker logs api-tests-runner 2>/dev/null | grep -A 2 'GitHub API Test Suite' || true",
+                            returnStdout: true
+                        ).trim()
+                    } else {
+                        summary = powershell(
+                            script: '''
+try {
+    $logs = docker logs api-tests-runner 2>$null
+    $lines = $logs -split "`n"
+    $idx = ($lines | Select-String "GitHub API Test Suite").LineNumber - 1
+    if ($idx -ge 0) {
+        $lines[$idx..($idx+2)] -join "`n"
+    } else { "" }
+} catch { "" }
+''',
+                            returnStdout: true
+                        ).trim()
+                    }
+
+                    env.TEST_SUMMARY = summary
+                    echo "✅ Extracted API Test Summary:\n${env.TEST_SUMMARY}"
                 }
-
-                // assign to env variable to use later in email
-                env.TEST_SUMMARY = summary
-
-                echo "✅ Extracted API Test Summary:\n${env.TEST_SUMMARY}"
             }
         }
-    }
+
     }
 
     post {
         always {
+            archiveArtifacts artifacts: 'allure-results/**', fingerprint: true
+            archiveArtifacts artifacts: 'allure-report.zip', fingerprint: true
             script {
-                archiveArtifacts artifacts: 'allure-results/**', fingerprint: true
-                archiveArtifacts artifacts: 'allure-report.zip', fingerprint: true
-
                 emailext(
                     subject: "Build #${env.BUILD_NUMBER} - ${currentBuild.currentResult}",
                     to: 'debasmita25@gmail.com',
                     mimeType: 'text/html',
-                    attachLog: true,
                     body: """
                     <h3>Build Summary</h3>
                     <p><b>Job:</b> ${env.JOB_NAME}</p>
-
                     <p><b>Status:</b> 
-                    <span style="color: white; background-color: ${currentBuild.currentResult == 'SUCCESS' ? 'green' : 'red'}; padding: 5px;">
+                    <span style="color: ${currentBuild.currentResult == 'SUCCESS' ? 'green' : 'red'};">
                     ${currentBuild.currentResult}
                     </span>
                     </p>
 
-                    <p><a href="${env.BUILD_URL}allure">View Allure Report in Jenkins</a></p>
-                    <p><a href="${env.BUILD_URL}artifact/allure-report.zip">Download Allure Report</a></p>
-
-                    <h4>API Test Summary:</h4>
+                    <h3>API Test Summary:</h3>
                     <pre>${env.TEST_SUMMARY}</pre>
 
-                    <p style="color:green;">Navigate to the download directory and execute:</p>
-                    <p><b>allure open allure-report</b></p>
+                    <p><a href="${env.BUILD_URL}allure">View Allure Report in Jenkins</a></p>
+                    <p><a href="${env.WORKSPACE}/allure-report.zip">Download Allure Report</a></p>
+
+                    <p><span style="color: green;">Navigate to the download directory and execute the following command to view the report:</span> </p>
+                    <p><b> allure open allure-report </b> </p>
                     """
                 )
             }
         }
 
-        success { echo "✅ Pipeline Passed" }
-        failure { echo "❌ Pipeline Failed" }
+        success {
+            echo "✅ Pipeline Passed"
+        }
+
+        failure {
+            echo "❌ Pipeline Failed"
+        }
     }
 }
