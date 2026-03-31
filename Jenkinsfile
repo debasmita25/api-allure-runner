@@ -14,9 +14,7 @@ pipeline {
     stages {
 
         stage('Checkout') {
-            steps {
-                checkout scm
-            }
+            steps { checkout scm }
         }
 
         stage('Setup Workspace') {
@@ -47,17 +45,18 @@ pipeline {
                         usernameVariable: 'GITHUB_USERNAME',
                         passwordVariable: 'GITHUB_TOKEN'
                     )]) {
+
                         if (isUnix()) {
                             sh '''
-                                cat <<EOF > .env
+cat <<EOF > .env
 GITHUB_USERNAME=$GITHUB_USERNAME
 GITHUB_TOKEN=$GITHUB_TOKEN
 TEST_ENV=$TEST_ENV
 TEST_SUITE=$TEST_SUITE
 EOF
-                                docker compose down || true
-                                docker compose up --pull always --abort-on-container-exit
-                            '''
+docker compose down || true
+docker compose up --pull always --abort-on-container-exit
+'''
                         } else {
                             powershell '''
 @"
@@ -67,10 +66,7 @@ TEST_ENV=$env:TEST_ENV
 TEST_SUITE=$env:TEST_SUITE
 "@ | Out-File -Encoding ASCII .env
 
-# Stop and remove existing containers safely
 docker compose down -v -t 10 2>$null
-
-# Run docker compose with always pull latest image
 docker compose up --pull always --abort-on-container-exit
 '''
                         }
@@ -79,10 +75,12 @@ docker compose up --pull always --abort-on-container-exit
             }
         }
 
-        stage('Generate Allure Report') {
+        // ✅ Generate report + ZIP (REQUIRED for attachment)
+        stage('Generate Allure Report + ZIP') {
             steps {
                 script {
                     def allureHome = tool 'Allure'
+
                     if (isUnix()) {
                         sh """
                             ${allureHome}/bin/allure generate allure-results --clean -o allure-report
@@ -91,13 +89,14 @@ docker compose up --pull always --abort-on-container-exit
                     } else {
                         powershell """
 & '${allureHome}\\bin\\allure.bat' generate allure-results --clean -o allure-report
-Compress-Archive -Path allure-report\\* -DestinationPath allure-report.zip
+Compress-Archive -Path allure-report\\* -DestinationPath allure-report.zip -Force
 """
                     }
                 }
             }
         }
 
+        // ✅ Extract Summary
         stage('Extract Test Summary') {
             steps {
                 script {
@@ -112,23 +111,32 @@ Compress-Archive -Path allure-report\\* -DestinationPath allure-report.zip
             }
         }
 
-   
-
+        // ✅ Publish to Jenkins UI
         stage('Publish Allure Report') {
-        steps {
-            allure([
-                includeProperties: false,
-                jdk: '',
-                results: [[path: 'allure-results']]
-            ])
+            steps {
+                allure([
+                    includeProperties: false,
+                    results: [[path: 'allure-results']],
+                    reportBuildPolicy: 'ALWAYS'
+                ])
+            }
         }
     }
- } // stages
 
     post {
         always {
+
             archiveArtifacts artifacts: 'allure-results/**', fingerprint: true
-            archiveArtifacts artifacts: 'allure-report.zip', fingerprint: true
+
+            script {
+                // ✅ Fail-safe ZIP archive
+                if (fileExists('allure-report.zip')) {
+                    archiveArtifacts artifacts: 'allure-report.zip', fingerprint: true
+                    echo "✅ ZIP archived"
+                } else {
+                    echo "⚠️ allure-report.zip not found, skipping archive"
+                }
+            }
 
             script {
                 def emailBody = """
@@ -143,11 +151,8 @@ Compress-Archive -Path allure-report\\* -DestinationPath allure-report.zip
                     <h4>API Test Summary:</h4>
                     <pre>${env.API_TEST_SUMMARY}</pre>
 
-                    <p><a href="${env.BUILD_URL}allure">View Allure Report in Jenkins</a></p>
-                    <p><a href="${env.BUILD_URL}artifact/allure-report.zip">Download Allure Report</a></p>
-
-                    <p><span style="color:green;">Navigate to the download directory and execute:</span></p>
-                    <p><b>allure open allure-report</b></p>
+                    <p><a href="${env.BUILD_URL}allure">📊 View Allure Report</a></p>
+                    <p><a href="${env.BUILD_URL}artifact/allure-report.zip">⬇️ Download ZIP</a></p>
                 """
 
                 emailext(
@@ -155,7 +160,7 @@ Compress-Archive -Path allure-report\\* -DestinationPath allure-report.zip
                     to: 'debasmita25@gmail.com',
                     mimeType: 'text/html',
                     body: emailBody,
-                    attachmentsPattern: "${env.WORKSPACE}/allure-report.zip"
+                    attachmentsPattern: 'allure-report.zip'
                 )
             }
         }
