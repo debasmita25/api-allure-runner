@@ -112,7 +112,7 @@ Compress-Archive -Path allure-report\\* -DestinationPath allure-report.zip
             }
         }
 
-    } // stages
+   
 
         stage('Publish Allure Report') {
         steps {
@@ -123,6 +123,7 @@ Compress-Archive -Path allure-report\\* -DestinationPath allure-report.zip
             ])
         }
     }
+ } // stages
 
     post {
         always {
